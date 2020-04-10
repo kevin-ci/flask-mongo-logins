@@ -1,4 +1,5 @@
 from functools import wraps
+from bson.objectid import ObjectId
 from flask import Flask, render_template, session, request, redirect, url_for
 from flask_pymongo import PyMongo
 from passlib.hash import pbkdf2_sha256
@@ -30,6 +31,30 @@ def home():
     # else return basic page, job application page, etc
     return render_template('topsecret.html', user_type=session['usertype'])
 
+@app.route('/create', methods=["GET", "POST"])
+@check_logged_in
+def create():
+    if request.method == "GET":
+        return render_template('create.html')
+    elif request.method == "POST":
+        mongo.db.tasks.insert_one({"creatorId": session['user-id'],
+                                "content": request.form['content']})
+        return redirect(url_for('read'))
+
+@app.route('/read')
+@check_logged_in
+def read():
+    return render_template('read.html', tasks=mongo.db.tasks.find(), user_id=session['user-id'])
+
+@app.route('/delete/<task_id>')
+@check_logged_in
+def delete(task_id):
+    task = mongo.db.tasks.find_one({'_id': ObjectId(task_id)})
+    if session['user-id'] == task['creatorId']:
+        return "task deleted"
+    else:
+        return "you didn't create that task"
+
 @app.route('/register', methods=["GET", "POST"])
 def register():
     if request.method == "GET":
@@ -58,7 +83,8 @@ def login():
         form_password = request.form['password']
         if pbkdf2_sha256.verify(form_password, user_password):
             session['logged-in'] = True
-            session['user-id'] = username
+            session['user-name'] = username
+            session['user-id'] = str(user['_id'])
             session['usertype'] = user['type']
         else:
             return "login error"    
@@ -68,6 +94,7 @@ def login():
 @check_logged_in
 def logout():
     session.pop('logged-in', None)
+    session.pop('user-name', None)
     session.pop('user-id', None)
     session.pop('usertype', None)
     return redirect(url_for('login'))
